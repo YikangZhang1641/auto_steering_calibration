@@ -191,15 +191,15 @@ class MY_GUI():
                 self.calib.loop_stop()
                 return
 
-            if angle < -530:
-                print(angle, "out of range: smaller than -530")
-                self.calib.loop_stop()
-                return
-
-            if angle > 530:
-                print(angle, "out of range: larger than 530")
-                self.calib.loop_stop()
-                return
+            # if angle < -530:
+            #     print(angle, "out of range: smaller than -530")
+            #     self.calib.loop_stop()
+            #     return
+            #
+            # if angle > 530:
+            #     print(angle, "out of range: larger than 530")
+            #     self.calib.loop_stop()
+            #     return
 
             rospy.sleep(0.5)
             self.calib.loop_start(angle, Spd)
