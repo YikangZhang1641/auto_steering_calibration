@@ -27,7 +27,7 @@ class Calibrator:
         self.raw_x, self.raw_y = [], []
         self.angle, self.spd = 0, 0
         self.flag_record = False
-        # self.mp = None
+        self.mp = None
         self.is_finished = False
 
         self.boundarybuilder = bd
@@ -57,8 +57,8 @@ class Calibrator:
             x_copy, y_copy = self.raw_x.copy(), self.raw_y.copy()
             self.loop_stop()
             # self.calculate(self.angle, x_copy, y_copy)
-            mp = multiprocessing.Process(target=self.calculate, args=(self.angle, x_copy, y_copy))
-            mp.start()
+            self.mp = multiprocessing.Process(target=self.calculate, args=(self.angle, x_copy, y_copy))
+            self.mp.start()
 
         if len(self.raw_x) > 300:
             self.loop_stop()

@@ -15,6 +15,7 @@ import multiprocessing
 import math
 from collections import deque
 import tkinter
+import tkinter.ttk as ttk
 import hashlib
 import subprocess
 import threading
@@ -55,6 +56,7 @@ class MY_GUI():
         self.calib = Calibrator(self.boundary_builder)
         self.mp = None
         self.calib_is_running = False
+        self.t = None
 
         plt.style.use('seaborn-whitegrid')  # 使用样式
         plt.rcParams['font.sans-serif'] = ['SimHei']  # 显示中文
@@ -65,6 +67,10 @@ class MY_GUI():
         self.axc_map1 = self.fig_map.add_subplot(121)
         self.axc_map2 = self.fig_map.add_subplot(122)
 
+        self.fig_calib = plt.Figure(figsize=(5, 4), dpi=100)
+        self.canvas_calib = FigureCanvasTkAgg(self.fig_calib, master=self.init_window_name)  # A tk.DrawingArea.
+        self.canvas_calib.get_tk_widget().grid(row=0, column=6, rowspan=4, columnspan=4)
+        self.axc_calib = self.fig_calib.add_subplot(111)
 
     #设置窗口
     def set_init_window(self):
@@ -118,7 +124,8 @@ class MY_GUI():
         # self.draw_boundary_btn = tkinter.Button(self.init_window_name, text="", font=my_font, bg="lightblue", width=10, command=self.stop_recorder)  # 调用内部方法  加()为直接调用
         # self.draw_boundary_btn.grid(row=3, column=11)
 
-        self.plot()
+        self.plot_left()
+        self.plot_right()
 
    #功能函数
     def record_switch(self):
@@ -135,7 +142,6 @@ class MY_GUI():
         self.axc_map2.clear()
         self.boundary_initialized = False
 
-        # self.canvas.show()
 
     def stop_recorder(self):
         self.recorder.stop()
@@ -147,17 +153,16 @@ class MY_GUI():
         self.t = threading.Thread(target=self.calib_start)
         self.t.setDaemon(True)
         self.t.start()
-        # self.mp = multiprocessing.Process(target=self.calib_start)
-        # self.mp.start()
-        # self.calib_start()
 
     def calib_start(self):
+        mp_list = []
         if self.calib_is_running:
             return
         self.calib_is_running = True
 
         self.auto_calib = tkinter.Button(self.init_window_name, text="自动标定_开始", font=("song ti", 14), bg="lightblue", width=10, command=self.mp_calib_start)
         self.calib = Calibrator(self.boundary_builder)
+        rospy.sleep(0.5)
 
         vel_str = self.velocity_text.get('0.0', tkinter.END)
         if not is_number(vel_str):
@@ -191,17 +196,6 @@ class MY_GUI():
                 self.calib.loop_stop()
                 return
 
-            # if angle < -530:
-            #     print(angle, "out of range: smaller than -530")
-            #     self.calib.loop_stop()
-            #     return
-            #
-            # if angle > 530:
-            #     print(angle, "out of range: larger than 530")
-            #     self.calib.loop_stop()
-            #     return
-
-            rospy.sleep(0.5)
             self.calib.loop_start(angle, Spd)
             while not rospy.is_shutdown() and not self.calib.is_finished and not self.calib.OUTSIDE_REGION:
                 rospy.sleep(0.1)
@@ -209,22 +203,23 @@ class MY_GUI():
             if self.calib.OUTSIDE_REGION:
                 self.calib.loop_stop()
 
+            rospy.sleep(0.5)
             if self.calib.is_finished:
                 if self.calib.result is not None:
                     radius, err_avg = self.calib.result
 
-            # if self.mp is not None:
-            #     self.mp.join()
-            #     self.mp = None
-
+        #     if self.calib.mp is not None:
+        #         mp_list.append(self.calib.mp)
+        # for mp in mp_list:
+        #     mp.join()
 
     def calib_stop(self):
         self.calib.loop_stop()
-        if self.t:
+        if self.t is not None:
             self.t.join()
             self.t = None
         self.calib_is_running = False
-        self.calib.calculate()
+        self.calib.calculate(self.calib.angle, self.calib.raw_x, self.calib.raw_y)
 
     # def str_trans_to_md5(self):
     #     src = self.init_data_Text.get(1.0,tkinter.END).strip().replace("\n","").encode()
@@ -274,20 +269,40 @@ class MY_GUI():
             self.map = self.boundary_builder.map.T
 
         self.axc_map1.scatter(self.recorder.raw_x.copy(), self.recorder.raw_y.copy(), color='b')
-        self.axc_map2.imshow(self.map)
         self.axc_map1.set_aspect('equal')
+        self.axc_map2.imshow(self.map)
         self.axc_map2.invert_yaxis()
 
+    def update_calib_plot(self):
+        self.axc_calib.clear()
+        if len(self.recorder.raw_x.copy()) > 0:
+            self.axc_calib.scatter(self.recorder.raw_x.copy(), self.recorder.raw_y.copy(), color='gray')
+        if len(self.calib.raw_x) > 0:
+            self.axc_calib.scatter([self.calib.raw_x[-1]], [self.calib.raw_y[-1]], marker="*", s=200, color='r')
 
-    def plot(self):
+        # if self.map is not None:
+        #     mark_map = self.map
+        #     try:
+        #         mark_x, mark_y = self.boundary_builder.grid_trans(self.recorder.raw_x[-1], self.recorder.raw_y[-1])
+        #         mark_map[mark_x][mark_y] = 3
+        #     except Exception:
+        #         print("coord invalid")
+        #     self.axc_calib.imshow(mark_map)
+
+    def plot_right(self):
+        if not rospy.is_shutdown():
+            self.update_calib_plot()
+            self.canvas_calib.show()
+            self.init_window_name.after(300, self.plot_right)
+
+    def plot_left(self):
         if not rospy.is_shutdown():
             self.update_map()
             self.axc_map1.set_title("Origin Trajectory")
             self.axc_map2.set_title("Drivable Region")
-            # self.axc1.set_title(u'边界轨迹原始数据')
-            # self.axc2.set_title(u'可通行区域')
+
             self.canvas_map.show()
-            self.init_window_name.after(300, self.plot)
+            self.init_window_name.after(300, self.plot_left)
 
 if __name__ == "__main__":
     init_window = tkinter.Tk()              #实例化出一个父窗口
