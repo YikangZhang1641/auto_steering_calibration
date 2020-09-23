@@ -27,7 +27,7 @@ class Calibrator:
         self.raw_x, self.raw_y = [], []
         self.angle, self.spd = 0, 0
         self.flag_record = False
-        self.mp = None
+        # self.mp = None
         self.is_finished = False
 
         self.boundarybuilder = bd
@@ -57,8 +57,8 @@ class Calibrator:
             x_copy, y_copy = self.raw_x.copy(), self.raw_y.copy()
             self.loop_stop()
             # self.calculate(self.angle, x_copy, y_copy)
-            self.mp = multiprocessing.Process(target=self.calculate, args=(self.angle, x_copy, y_copy))
-            self.mp.start()
+            mp = multiprocessing.Process(target=self.calculate, args=(self.angle, x_copy, y_copy))
+            mp.start()
 
         if len(self.raw_x) > 300:
             self.loop_stop()
@@ -90,13 +90,16 @@ class Calibrator:
         self.publish_msg(self.angle, self.spd)
         self.OUTSIDE_REGION = False
         self.result = None
+        self.raw_x.clear()
+        self.raw_y.clear()
 
     def loop_stop(self):
         self.flag_record = False
         self.is_finished = True
         self.publish_msg(0, 0)
-        self.raw_x.clear()
-        self.raw_y.clear()
+        # if self.mp is not None:
+        #     self.mp.join()
+        #     self.mp = None
 
     def distance(self, ax, ay, bx, by):
         return np.sqrt((ax - bx) ** 2 + (ay - by) ** 2)
@@ -136,7 +139,8 @@ class Calibrator:
         print("Success! Radius = ", plsq[0][2])
 
         fileObject = open(OutputFile, "a")
-        fileObject.write(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+        time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        fileObject.write(time_str)
         fileObject.write(" ")
         fileObject.write(str(angle))
         fileObject.write(" ")
@@ -153,6 +157,7 @@ class Calibrator:
         plt.axes().set_aspect('equal')
         # plt.pause(0.001)
         # plt.draw()
+        plt.savefig("./data/" + time_str + ".png")
         plt.show()
 
 def is_number(s):

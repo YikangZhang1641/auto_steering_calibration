@@ -53,6 +53,8 @@ class MY_GUI():
         self.recorder = DataRecorder()
         self.boundary_builder = None
         self.calib = Calibrator(self.boundary_builder)
+        self.mp = None
+        self.calib_is_running = False
 
         plt.style.use('seaborn-whitegrid')  # 使用样式
         plt.rcParams['font.sans-serif'] = ['SimHei']  # 显示中文
@@ -105,6 +107,8 @@ class MY_GUI():
 
         self.auto_calib = tkinter.Button(self.init_window_name, text="自动标定_开始", font=my_font, bg="lightblue", width=10, command=self.mp_calib_start)
         self.auto_calib.grid(row=8, column=5, rowspan=1, columnspan=2)
+        self.stop_calib = tkinter.Button(self.init_window_name, text="手动终止", font=my_font, bg="lightblue", width=10, command=self.calib_stop)
+        self.stop_calib.grid(row=8, column=7, rowspan=1, columnspan=2)
 
         #按钮
         self.record_btn = tkinter.Button(self.init_window_name, text="边界绘制_开始", font=my_font, bg="lightblue", width=10, command=self.record_switch)
@@ -140,21 +144,25 @@ class MY_GUI():
         self.boundary_initialized = True
 
     def mp_calib_start(self):
-        # t = threading.Thread(target=self.calib_start)
-        # t.setDaemon(True)
-        # t.start()
-        # mp = multiprocessing.Process(target=self.calib_start())
-        # mp.start()
-        # mp.join()
-        self.calib_start()
+        self.t = threading.Thread(target=self.calib_start)
+        self.t.setDaemon(True)
+        self.t.start()
+        # self.mp = multiprocessing.Process(target=self.calib_start)
+        # self.mp.start()
+        # self.calib_start()
 
     def calib_start(self):
-        calib = Calibrator(self.boundary_builder)
+        if self.calib_is_running:
+            return
+        self.calib_is_running = True
+
+        self.auto_calib = tkinter.Button(self.init_window_name, text="自动标定_开始", font=("song ti", 14), bg="lightblue", width=10, command=self.mp_calib_start)
+        self.calib = Calibrator(self.boundary_builder)
 
         vel_str = self.velocity_text.get('0.0', tkinter.END)
         if not is_number(vel_str):
             print(vel_str, " is not an number!!!")
-            calib.loop_stop()
+            self.calib.loop_stop()
             return
 
         Spd = float(vel_str)
@@ -174,38 +182,49 @@ class MY_GUI():
 
             if not is_number(line):
                 print(line, " is not an number!!!")
-                calib.loop_stop()
+                self.calib.loop_stop()
                 return
 
             angle = math.floor(float(line))
             if math.fabs((angle - float(line)) > 1e-3):
                 print(float(line), " is not an integer input!!!")
-                calib.loop_stop()
+                self.calib.loop_stop()
                 return
 
             if angle < -530:
                 print(angle, "out of range: smaller than -530")
-                calib.loop_stop()
+                self.calib.loop_stop()
                 return
 
             if angle > 530:
                 print(angle, "out of range: larger than 530")
-                calib.loop_stop()
+                self.calib.loop_stop()
                 return
 
             rospy.sleep(0.5)
-            calib.loop_start(angle, Spd)
-            while not rospy.is_shutdown() and not calib.is_finished and not calib.OUTSIDE_REGION:
+            self.calib.loop_start(angle, Spd)
+            while not rospy.is_shutdown() and not self.calib.is_finished and not self.calib.OUTSIDE_REGION:
                 rospy.sleep(0.1)
 
-            if calib.OUTSIDE_REGION:
-                calib.loop_stop()
-                return
+            if self.calib.OUTSIDE_REGION:
+                self.calib.loop_stop()
 
-            rospy.sleep(2.0)
-            if calib.is_finished:
-                if calib.result is not None:
-                    radius, err_avg = calib.result
+            if self.calib.is_finished:
+                if self.calib.result is not None:
+                    radius, err_avg = self.calib.result
+
+            # if self.mp is not None:
+            #     self.mp.join()
+            #     self.mp = None
+
+
+    def calib_stop(self):
+        self.calib.loop_stop()
+        if self.t:
+            self.t.join()
+            self.t = None
+        self.calib_is_running = False
+        self.calib.calculate()
 
     # def str_trans_to_md5(self):
     #     src = self.init_data_Text.get(1.0,tkinter.END).strip().replace("\n","").encode()
