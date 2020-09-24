@@ -1,22 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 
-import sys, getopt
-import time
 import rospy
-from udrive_msgs.msg import ControlCmd
-# from std_msgs.msg import Int32, Bool
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import leastsq
 from sensor_msgs.msg import NavSatFix
-from std_msgs.msg import String
 import multiprocessing
 import math
 from collections import deque
-import tkinter
-import hashlib
-
 
 lat_offset = 22.533
 lon_offset = 113.938

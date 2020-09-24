@@ -1,36 +1,15 @@
 #!/usr/bin/env python3
 #coding:utf-8
 
-import sys, getopt
-import time
 import rospy
-from udrive_msgs.msg import ControlCmd
-# from std_msgs.msg import Int32, Bool
-import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import leastsq
-from sensor_msgs.msg import NavSatFix
-from std_msgs.msg import String
 import multiprocessing
 import math
-from collections import deque
 import tkinter
-import tkinter.ttk as ttk
-import hashlib
-import subprocess
 import threading
 
 # 创建画布需要的库
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-
-# 创建工具栏需要的库
-from matplotlib.backends.backend_tkagg import NavigationToolbar2Tk
-
-# 快捷键需要的模块
-from matplotlib.backend_bases import key_press_handler
-
-# 导入绘图需要的模块
-from matplotlib.figure import Figure
 
 from set_boundary import DataRecorder, BoundaryBuilder
 from auto_calibration import Calibrator, is_number
@@ -76,8 +55,9 @@ class MY_GUI():
         self.fig_map = plt.Figure(figsize=(5, 4), dpi=100)
         self.canvas_map = FigureCanvasTkAgg(self.fig_map, master=self.init_window_name)  # A tk.DrawingArea.
         self.canvas_map.get_tk_widget().grid(row=0, column=0, rowspan=4, columnspan=4)
-        self.axc_map1 = self.fig_map.add_subplot(121)
-        self.axc_map2 = self.fig_map.add_subplot(122)
+        # self.axc_map1 = self.fig_map.add_subplot(121)
+        # self.axc_map2 = self.fig_map.add_subplot(122)
+        self.axc_map2 = self.fig_map.add_subplot(111)
 
         self.fig_calib = plt.Figure(figsize=(5, 4), dpi=100)
         self.canvas_calib = FigureCanvasTkAgg(self.fig_calib, master=self.init_window_name)  # A tk.DrawingArea.
@@ -101,8 +81,8 @@ class MY_GUI():
         #self.init_window_name.attributes("-alpha",0.9)                          #虚化，值越小虚化程度越高
         #标签
 
-        self.init_data_label = tkinter.Label(self.init_window_name, text="前轮转角", font=my_font)
-        self.init_data_label.grid(row=0, column=0)
+        # self.init_data_label = tkinter.Label(self.init_window_name, text="前轮转角", font=my_font)
+        # self.init_data_label.grid(row=0, column=0)
 
         # self.result_data_label = tkinter.Label(self.init_window_name, text="输出结果")
         # self.result_data_label.grid(row=1, column=0)
@@ -156,9 +136,11 @@ class MY_GUI():
         self.recorder.start()
         self.record_btn["text"] = "边界绘制_结束"
         self.log_label["text"] = "正在录制边界"
-        self.axc_map1.clear()
+        # self.axc_map1.clear()
         self.axc_map2.clear()
         self.boundary_initialized = False
+        self.boundary_builder = None
+        self.map = None
 
 
     def stop_recorder(self):
@@ -172,8 +154,6 @@ class MY_GUI():
         self.t = StoppableThread(target=self.calib_start)
         self.t.setDaemon(True)
         self.t.start()
-        # self.t = multiprocessing.Process(target=self.calib_start)
-        # self.t.start()
 
 
     def calib_start(self):
@@ -251,12 +231,13 @@ class MY_GUI():
 
     def calib_stop(self):
         self.calib.loop_stop()
-        self.calib_is_running = False
         if self.t is not None:
             self.t.stop()
         self.auto_calib['text'] = "自动标定_开始"
-        mp = multiprocessing.Process(target=self.calib.calculate, args=(self.calib.angle, self.calib.raw_x, self.calib.raw_y))
-        mp.start()
+        if self.calib_is_running is True:
+            mp = multiprocessing.Process(target=self.calib.calculate, args=(self.calib.angle, self.calib.raw_x.copy(), self.calib.raw_y.copy()))
+            mp.start()
+            self.calib_is_running = False
 
     # def str_trans_to_md5(self):
     #     src = self.init_data_Text.get(1.0,tkinter.END).strip().replace("\n","").encode()
@@ -303,21 +284,26 @@ class MY_GUI():
 
         if not self.boundary_initialized:
             self.boundary_builder = BoundaryBuilder(self.recorder.raw_x.copy(), self.recorder.raw_y.copy(), RESOLUTION, OFFSET)
-            self.map = self.boundary_builder.map.T
+            self.map = self.boundary_builder.map
 
-        self.axc_map1.scatter(self.recorder.raw_x.copy(), self.recorder.raw_y.copy(), color='b')
-        self.axc_map1.set_aspect('equal')
+        # self.axc_map1.scatter(self.recorder.raw_x.copy(), self.recorder.raw_y.copy(), color='b')
+        # self.axc_map1.set_aspect('equal')
         self.axc_map2.imshow(self.map)
         self.axc_map2.invert_yaxis()
 
     def update_calib_plot(self):
         self.axc_calib.clear()
-        if len(self.recorder.raw_x.copy()) > 0:
-            self.axc_calib.scatter(self.recorder.raw_x.copy(), self.recorder.raw_y.copy(), color='gray')
-        if self.calib is not None and len(self.calib.raw_x) > 0:
-            self.axc_calib.scatter(self.calib.raw_x, self.calib.raw_y, s=20, color='b')
-            self.axc_calib.scatter([self.calib.raw_x[-1]], [self.calib.raw_y[-1]], marker="*", s=200, color='r')
+        self.axc_calib.set_aspect('equal')
 
+        if len(self.recorder.raw_x.copy()) > 0:
+            self.axc_calib.scatter(self.recorder.raw_y.copy(), self.recorder.raw_x.copy(), color='gray')
+        if self.calib is not None and len(self.calib.raw_x) > 0:
+            self.axc_calib.scatter(self.calib.raw_y, self.calib.raw_x, s=20, color='b')
+            self.axc_calib.scatter([self.calib.raw_y[-1]], [self.calib.raw_x[-1]], marker="*", s=200, color='r')
+
+        if not self.calib_is_running and self.t is not None:
+            self.t.join()
+            self.t = None
         # if self.map is not None:
         #     mark_map = self.map
         #     try:
@@ -330,16 +316,16 @@ class MY_GUI():
     def plot_right(self):
         if not rospy.is_shutdown():
             self.update_calib_plot()
-            self.canvas_calib.show()
+            self.canvas_calib.draw()
             self.init_window_name.after(300, self.plot_right)
 
     def plot_left(self):
         if not rospy.is_shutdown():
             self.update_map()
-            self.axc_map1.set_title("Origin Trajectory")
+            # self.axc_map1.set_title("Origin Trajectory")
             self.axc_map2.set_title("Drivable Region")
 
-            self.canvas_map.show()
+            self.canvas_map.draw()
             self.init_window_name.after(300, self.plot_left)
 
 if __name__ == "__main__":

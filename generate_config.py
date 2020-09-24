@@ -1,5 +1,7 @@
+#!/usr/bin/env python3
+# coding:utf-8
+
 import sys, getopt
-import time
 import numpy as np
 
 InputFile = "data/calibration.txt"
@@ -27,7 +29,11 @@ if __name__ == "__main__":
     inputObject = open(InputFile, "r")
     line = inputObject.readline()
     while line:
-        words = line.split()
+        words = line.split(' ')
+        if len(words) != 5:
+            print("result dim not valid: ", line)
+            line = inputObject.readline()
+            continue
         angle = float(words[2])
         if angle not in data:
             data[angle] = []

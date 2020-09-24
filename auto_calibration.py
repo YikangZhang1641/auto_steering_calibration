@@ -5,16 +5,12 @@ import sys, getopt
 import time
 import rospy
 from udrive_msgs.msg import ControlCmd
-# from std_msgs.msg import Int32, Bool
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import leastsq
 from sensor_msgs.msg import NavSatFix
-from std_msgs.msg import String
-import multiprocessing
-import math
+import os
 from set_boundary import lat_lon_to_x_y
-import threading
 
 Spd = 0.4
 OutputFile = "data/calibration.txt"
@@ -35,6 +31,8 @@ class Calibrator:
         self.result = None
         # plt.ion()
         # plt.show()
+        if not os.path.exists("data"):
+            os.mkdir("data")
 
     def __del__(self):
         print("jobs done")
@@ -43,7 +41,8 @@ class Calibrator:
         x, y = lat_lon_to_x_y(msg.longitude, msg.latitude)
         if self.boundarybuilder is not None and self.boundarybuilder.map is not None:
             grid_x, grid_y = self.boundarybuilder.grid_trans(x, y)
-            if self.boundarybuilder.not_valid(grid_x, grid_y):
+            if self.boundarybuilder.not_valid(grid_x, grid_y) or self.boundarybuilder.map[grid_x][grid_y] == self.boundarybuilder.OUTSIDE:
+                print("outside region")
                 self.OUTSIDE_REGION = True
                 self.loop_stop()
 
@@ -61,9 +60,9 @@ class Calibrator:
         if self.at_start_point():
             x_copy, y_copy = self.raw_x.copy(), self.raw_y.copy()
             self.loop_stop()
-            # self.calculate(self.angle, x_copy, y_copy)
-            self.mp = multiprocessing.Process(target=self.calculate, args=(self.angle, x_copy, y_copy))
-            self.mp.start()
+            self.calculate(self.angle, x_copy, y_copy)
+            # self.mp = multiprocessing.Process(target=self.calculate, args=(self.angle, x_copy, y_copy))
+            # self.mp.start()
 
         if len(self.raw_x) > 300:
             self.loop_stop()
@@ -121,7 +120,7 @@ class Calibrator:
             angle = np.pi * 2 * i / N
             x.append(r * np.cos(angle) + ox)
             y.append(r * np.sin(angle) + oy)
-        plt.plot(x, y, color=clr, linestyle='-')
+        plt.plot(y, x, color=clr, linestyle='-')
 
     def calculate(self, angle, raw_x, raw_y):
         global OutputFile
@@ -143,7 +142,7 @@ class Calibrator:
         self.result = [plsq[0][2], err_avg]
         print("Success! Radius = ", plsq[0][2])
 
-        fileObject = open(OutputFile, "a")
+        fileObject = open(OutputFile, "a+")
         time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         fileObject.write(time_str)
         fileObject.write(" ")
@@ -156,19 +155,30 @@ class Calibrator:
         fileObject.close()
 
         # plt.ion()
-        plt.figure(time_str)
-        # ax1 = fig.add_subplot(1, 1, 1)
-        self.draw_circle(plsq[0], "red")
+        # plt.figure(time_str)
+        # plt.show()
+        # self.draw_circle(plsq[0], "red")
+
+        N = 100
+        ox, oy, r = plsq[0]
+        x, y = [], []
+        for i in range(N + 1):
+            angle = np.pi * 2 * i / N
+            x.append(r * np.cos(angle) + ox)
+            y.append(r * np.sin(angle) + oy)
+        plt.plot(y, x, color="red", linestyle='-')
+
         plt.title("angle: " + str(self.angle) + ", \nRadius: " + str(round(plsq[0][2], 2)))
-        plt.scatter(raw_x, raw_y)
+        plt.scatter(raw_y, raw_x)
         plt.grid(True)
         plt.axes().set_aspect('equal')
         plt.savefig("./data/" + time_str + ".png")
 
-        plt.show(block=False)
-        plt.pause(10)
-        plt.close(time_str)
-
+        # plt.draw()
+        # plt.show(block=False)
+        # plt.pause(0.1)
+        # plt.close(time_str)
+        plt.clf()
 
 def is_number(s):
     try:
