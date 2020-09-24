@@ -43,7 +43,19 @@ RESOLUTION = 0.2
 OFFSET = 5.0
 
 
-LOG_LINE_NUM = 0
+class StoppableThread(threading.Thread):
+    """Thread class with a stop() method. The thread itself has to check
+    regularly for the stopped() condition."""
+
+    def __init__(self,  *args, **kwargs):
+        super(StoppableThread, self).__init__(*args, **kwargs)
+        self._stop_event = threading.Event()
+
+    def stop(self):
+        self._stop_event.set()
+
+    def stopped(self):
+        return self._stop_event.is_set()
 
 class MY_GUI():
     def __init__(self, init_window_name):
@@ -71,6 +83,12 @@ class MY_GUI():
         self.canvas_calib = FigureCanvasTkAgg(self.fig_calib, master=self.init_window_name)  # A tk.DrawingArea.
         self.canvas_calib.get_tk_widget().grid(row=0, column=6, rowspan=4, columnspan=4)
         self.axc_calib = self.fig_calib.add_subplot(111)
+        self.init_window_name.protocol('WM_DELETE_WINDOW', self.close_app)
+
+    def close_app(self):
+        if self.t is not None:
+            self.t.stop()
+        self.init_window_name.destroy()
 
     #设置窗口
     def set_init_window(self):
@@ -150,17 +168,20 @@ class MY_GUI():
         self.boundary_initialized = True
 
     def mp_calib_start(self):
-        self.t = threading.Thread(target=self.calib_start)
+        self.auto_calib['text'] = "自动标定中..."
+        self.t = StoppableThread(target=self.calib_start)
         self.t.setDaemon(True)
         self.t.start()
+        # self.t = multiprocessing.Process(target=self.calib_start)
+        # self.t.start()
+
 
     def calib_start(self):
-        mp_list = []
         if self.calib_is_running:
             return
+        mp_list = []
         self.calib_is_running = True
 
-        self.auto_calib = tkinter.Button(self.init_window_name, text="自动标定_开始", font=("song ti", 14), bg="lightblue", width=10, command=self.mp_calib_start)
         self.calib = Calibrator(self.boundary_builder)
         rospy.sleep(0.5)
 
@@ -197,29 +218,45 @@ class MY_GUI():
                 return
 
             self.calib.loop_start(angle, Spd)
-            while not rospy.is_shutdown() and not self.calib.is_finished and not self.calib.OUTSIDE_REGION:
+            while not rospy.is_shutdown() and not self.calib.is_finished and not self.calib.OUTSIDE_REGION and self.calib_is_running:
                 rospy.sleep(0.1)
 
+            print("123123")
+            if rospy.is_shutdown():
+                print("rospy.is_shutdown()")
+
+            if self.calib.is_finished:
+                print("self.calib.is_finished")
+
             if self.calib.OUTSIDE_REGION:
+                print("outside region")
                 self.calib.loop_stop()
+                return
+
+            if self.calib_is_running is False:
+                print("manual stopped already")
+                self.calib.loop_stop()
+                return
 
             rospy.sleep(0.5)
-            if self.calib.is_finished:
-                if self.calib.result is not None:
-                    radius, err_avg = self.calib.result
+            # if self.calib.is_finished:
+            #     if self.calib.result is not None:
+            #         radius, err_avg = self.calib.result
 
         #     if self.calib.mp is not None:
         #         mp_list.append(self.calib.mp)
         # for mp in mp_list:
         #     mp.join()
+        self.auto_calib['text'] = "自动标定_开始"
 
     def calib_stop(self):
         self.calib.loop_stop()
-        if self.t is not None:
-            self.t.join()
-            self.t = None
         self.calib_is_running = False
-        self.calib.calculate(self.calib.angle, self.calib.raw_x, self.calib.raw_y)
+        if self.t is not None:
+            self.t.stop()
+        self.auto_calib['text'] = "自动标定_开始"
+        mp = multiprocessing.Process(target=self.calib.calculate, args=(self.calib.angle, self.calib.raw_x, self.calib.raw_y))
+        mp.start()
 
     # def str_trans_to_md5(self):
     #     src = self.init_data_Text.get(1.0,tkinter.END).strip().replace("\n","").encode()
@@ -277,7 +314,8 @@ class MY_GUI():
         self.axc_calib.clear()
         if len(self.recorder.raw_x.copy()) > 0:
             self.axc_calib.scatter(self.recorder.raw_x.copy(), self.recorder.raw_y.copy(), color='gray')
-        if len(self.calib.raw_x) > 0:
+        if self.calib is not None and len(self.calib.raw_x) > 0:
+            self.axc_calib.scatter(self.calib.raw_x, self.calib.raw_y, s=20, color='b')
             self.axc_calib.scatter([self.calib.raw_x[-1]], [self.calib.raw_y[-1]], marker="*", s=200, color='r')
 
         # if self.map is not None:

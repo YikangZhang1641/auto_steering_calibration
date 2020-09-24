@@ -33,6 +33,11 @@ class Calibrator:
         self.boundarybuilder = bd
         self.OUTSIDE_REGION = False
         self.result = None
+        # plt.ion()
+        # plt.show()
+
+    def __del__(self):
+        print("jobs done")
 
     def data_callback(self, msg):
         x, y = lat_lon_to_x_y(msg.longitude, msg.latitude)
@@ -42,17 +47,17 @@ class Calibrator:
                 self.OUTSIDE_REGION = True
                 self.loop_stop()
 
-        if self.flag_record is False:
-            return
-
         if not (msg.status.status >= 1 and msg.position_covariance[0] < 10 and msg.position_covariance[3] < 10):
             print("GPS status error or covariance too large! Data not used! ")
             return
 
+        if self.flag_record is False:
+            return
+
         self.raw_x.append(x)
         self.raw_y.append(y)
-        print("raw data length: ", len(self.raw_x))
-        print("x=", x, "y=", y)
+        # print("raw data length: ", len(self.raw_x))
+        # print("x=", x, "y=", y)
         if self.at_start_point():
             x_copy, y_copy = self.raw_x.copy(), self.raw_y.copy()
             self.loop_stop()
@@ -108,7 +113,7 @@ class Calibrator:
         offset_x, offset_y, R = p
         return (1.0 - np.sqrt((x - offset_x)**2 + (y - offset_y)**2) / R) ** 2
 
-    def draw_circle(self, plt, p0, clr):
+    def draw_circle(self, p0, clr):
         N = 100
         ox, oy, r = p0
         x, y = [], []
@@ -150,15 +155,20 @@ class Calibrator:
         fileObject.write("\n")
         fileObject.close()
 
-        self.draw_circle(plt, plsq[0], "red")
-        plt.title("Radius: " + str(round(plsq[0][2], 2)))
+        # plt.ion()
+        plt.figure(time_str)
+        # ax1 = fig.add_subplot(1, 1, 1)
+        self.draw_circle(plsq[0], "red")
+        plt.title("angle: " + str(self.angle) + ", \nRadius: " + str(round(plsq[0][2], 2)))
         plt.scatter(raw_x, raw_y)
         plt.grid(True)
         plt.axes().set_aspect('equal')
-        # plt.pause(0.001)
-        # plt.draw()
         plt.savefig("./data/" + time_str + ".png")
-        plt.show()
+
+        plt.show(block=False)
+        plt.pause(10)
+        plt.close(time_str)
+
 
 def is_number(s):
     try:
