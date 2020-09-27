@@ -1,7 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 #coding:utf-8
 
 import rospy
+import time
 import matplotlib.pyplot as plt
 import multiprocessing
 import math
@@ -14,10 +15,6 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from set_boundary import DataRecorder, BoundaryBuilder
 from auto_calibration import Calibrator, is_number
 
-lat_offset = 22.533
-lon_offset = 113.938
-meter_in_lon = 1.141255544679108e-5
-meter_in_lat = 8.993216192195822e-6
 RESOLUTION = 0.2
 OFFSET = 5.0
 
@@ -48,6 +45,7 @@ class MY_GUI():
         self.mp = None
         self.calib_is_running = False
         self.t = None
+        self.logmsg = ""
 
         plt.style.use('seaborn-whitegrid')  # 使用样式
         plt.rcParams['font.sans-serif'] = ['SimHei']  # 显示中文
@@ -92,7 +90,7 @@ class MY_GUI():
 
         #文本框
         # self.angle_label = tkinter.Label(self.init_window_name, text="输入一组转角值, 以换行符分隔", font=my_font)
-        self.angle_label = tkinter.Label(self.init_window_name, text="输入单个转角值", font=my_font)
+        self.angle_label = tkinter.Label(self.init_window_name, text="输入转角值", font=my_font)
         self.angle_label.grid(row=5, column=5, rowspan=1, columnspan=2)
         self.angles_text = tkinter.Text(self.init_window_name, width=30, height=8)  #原始数据录入框
         self.angles_text.grid(row=6, column=5, rowspan=1, columnspan=2)
@@ -106,21 +104,19 @@ class MY_GUI():
         # self.result_data_Text = tkinter.Text(self.init_window_name, width=70, height=49)  #处理结果展示
         # self.result_data_Text.grid(row=1, column=12, rowspan=15, columnspan=10)
         #
-        # self.log_data_Text = tkinter.Text(self.init_window_name, width=66, height=9)  # 日志框
-        # self.log_data_Text.grid(row=13, column=0, columnspan=10)
 
         self.auto_calib = tkinter.Button(self.init_window_name, text="自动标定_开始", font=my_font, bg="lightblue", width=10, command=self.mp_calib_start)
-        self.auto_calib.grid(row=8, column=5, rowspan=1, columnspan=2)
-        self.stop_calib = tkinter.Button(self.init_window_name, text="手动终止", font=my_font, bg="lightblue", width=10, command=self.calib_stop)
-        self.stop_calib.grid(row=8, column=7, rowspan=1, columnspan=2)
+        self.auto_calib.grid(row=7, column=5, rowspan=1, columnspan=2)
+        self.stop_calib = tkinter.Button(self.init_window_name, text="计算输出并复位", font=my_font, bg="lightblue", width=10, command=self.calib_stop)
+        self.stop_calib.grid(row=7, column=7, rowspan=1, columnspan=2)
 
         #按钮
         self.record_btn = tkinter.Button(self.init_window_name, text="边界绘制_开始", font=my_font, bg="lightblue", width=10, command=self.record_switch)
         self.record_btn.grid(row=5, column=0, rowspan=1, columnspan=2)
-        self.log_label = tkinter.Label(self.init_window_name, text="边界: 未初始化")
-        self.log_label.grid(row=6, column=0, rowspan=1, columnspan=2)
-        # self.draw_boundary_btn = tkinter.Button(self.init_window_name, text="", font=my_font, bg="lightblue", width=10, command=self.stop_recorder)  # 调用内部方法  加()为直接调用
-        # self.draw_boundary_btn.grid(row=3, column=11)
+        self.log_label = tkinter.Label(self.init_window_name, text="边界: 未初始化", font=my_font)
+        self.log_label.grid(row=5, column=2, rowspan=1, columnspan=1)
+        self.result_data_Text = tkinter.Text(self.init_window_name, width=70, height=20)  # 日志框
+        self.result_data_Text.grid(row=6, column=1, rowspan=2, columnspan=2)
 
         self.plot_left()
         self.plot_right()
@@ -198,6 +194,7 @@ class MY_GUI():
                 return
 
             self.calib.loop_start(angle, Spd)
+            self.update_log(self.get_current_time() + " 开始: angle=" + str(angle) + ", speed=" + str(Spd))
             while not rospy.is_shutdown() and not self.calib.is_finished and not self.calib.OUTSIDE_REGION and self.calib_is_running:
                 rospy.sleep(0.1)
 
@@ -207,21 +204,21 @@ class MY_GUI():
 
             if self.calib.is_finished:
                 print("self.calib.is_finished")
+                self.update_log(self.get_current_time() + " 完成")
 
             if self.calib.OUTSIDE_REGION:
                 print("outside region")
                 self.calib.loop_stop()
+                self.update_log(self.get_current_time() + " stop: 离开可行区域!")
                 return
 
             if self.calib_is_running is False:
                 print("manual stopped already")
+                self.update_log(self.get_current_time() + " stop: 已手动停止!")
                 self.calib.loop_stop()
                 return
 
-            rospy.sleep(0.5)
-            # if self.calib.is_finished:
-            #     if self.calib.result is not None:
-            #         radius, err_avg = self.calib.result
+            rospy.sleep(1.0)
 
         #     if self.calib.mp is not None:
         #         mp_list.append(self.calib.mp)
@@ -231,6 +228,7 @@ class MY_GUI():
 
     def calib_stop(self):
         self.calib.loop_stop()
+        self.update_log(self.get_current_time() + " 手动停止!")
         if self.t is not None:
             self.t.stop()
         self.auto_calib['text'] = "自动标定_开始"
@@ -238,6 +236,20 @@ class MY_GUI():
             mp = multiprocessing.Process(target=self.calib.calculate, args=(self.calib.angle, self.calib.raw_x.copy(), self.calib.raw_y.copy()))
             mp.start()
             self.calib_is_running = False
+
+    def update_log(self, line):
+        if self.logmsg == "":
+            self.logmsg = line
+        else:
+            self.logmsg = self.logmsg + "\n" + line
+
+        try:
+            self.result_data_Text.delete(1.0, tkinter.END)
+            self.result_data_Text.insert(1.0, self.logmsg)
+        except:
+            self.result_data_Text.delete(1.0, tkinter.END)
+            self.result_data_Text.insert(1.0, "...")
+
 
     # def str_trans_to_md5(self):
     #     src = self.init_data_Text.get(1.0,tkinter.END).strip().replace("\n","").encode()
@@ -259,14 +271,14 @@ class MY_GUI():
     #         self.write_log_to_Text("ERROR:str_trans_to_md5 failed")
     #
     #
-    # #获取当前时间
-    # def get_current_time(self):
-    #     current_time = time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(time.time()))
-    #     return current_time
-    #
-    #
+    #获取当前时间
+    def get_current_time(self):
+        current_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
+        return current_time
+
+
     # #日志动态打印
-    # def write_log_to_Text(self,logmsg):
+    # def write_log_to_Text(self):
     #     global LOG_LINE_NUM
     #     current_time = self.get_current_time()
     #     logmsg_in = str(current_time) +" " + str(logmsg) + "\n"      #换行
@@ -276,7 +288,7 @@ class MY_GUI():
     #     else:
     #         self.log_data_Text.delete(1.0,2.0)
     #         self.log_data_Text.insert(tkinter.END, logmsg_in)
-    #
+
 
     def update_map(self):
         if len(self.recorder.raw_x) == 0:
@@ -299,7 +311,7 @@ class MY_GUI():
             self.axc_calib.scatter(self.recorder.raw_y.copy(), self.recorder.raw_x.copy(), color='gray')
         if self.calib is not None and len(self.calib.raw_x) > 0:
             self.axc_calib.scatter(self.calib.raw_y, self.calib.raw_x, s=20, color='b')
-            self.axc_calib.scatter([self.calib.raw_y[-1]], [self.calib.raw_x[-1]], marker="*", s=200, color='r')
+            self.axc_calib.scatter([self.calib.cur_x], [self.calib.cur_y], marker="*", s=200, color='r')
 
         if not self.calib_is_running and self.t is not None:
             self.t.join()

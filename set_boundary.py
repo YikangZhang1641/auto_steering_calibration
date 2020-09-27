@@ -18,7 +18,7 @@ OFFSET = 5.0
 
 
 def lat_lon_to_x_y(lat, lon):
-    return (lat - lon_offset) / meter_in_lon, (lon - lat_offset) / meter_in_lat  # y设为纬度
+    return (lat - lat_offset) / meter_in_lat, (lon - lon_offset) / meter_in_lon  # y设为纬度
 
 
 class DataRecorder:
@@ -30,7 +30,7 @@ class DataRecorder:
         self.is_finished = True
 
     def data_callback(self, msg):
-        x, y = lat_lon_to_x_y(msg.longitude, msg.latitude)
+        x, y = lat_lon_to_x_y(msg.latitude, msg.longitude)
 
         if self.is_finished is True:
             return

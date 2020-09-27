@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # coding:utf-8
 
 import sys, getopt
@@ -7,7 +7,7 @@ import numpy as np
 InputFile = "data/calibration.txt"
 OutputFile = "data/can_steer_table_config.config"
 wheel_base = 2.26
-width_rtk = 0.72
+width_rtk = 0.36
 rear_to_rtk = 0.43
 
 if __name__ == "__main__":
@@ -45,10 +45,10 @@ if __name__ == "__main__":
         steering_angle = float(key)
         Rg = np.average(data[key])
         if steering_angle < 0:
-            radius = np.sqrt(Rg * Rg - rear_to_rtk * rear_to_rtk) - width_rtk / 2
+            radius = np.sqrt(Rg * Rg - rear_to_rtk * rear_to_rtk) - width_rtk 
             wheel_angle = -np.arctan2(wheel_base, radius) * 180 / np.pi
         else:
-            radius = np.sqrt(Rg * Rg - rear_to_rtk * rear_to_rtk) + width_rtk / 2
+            radius = np.sqrt(Rg * Rg - rear_to_rtk * rear_to_rtk) + width_rtk 
             wheel_angle = np.arctan2(wheel_base, radius) * 180 / np.pi
 
         print("angle:", steering_angle, " radius:", radius, ", wheel:", wheel_angle)

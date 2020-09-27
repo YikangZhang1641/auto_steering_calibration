@@ -25,6 +25,7 @@ class Calibrator:
         self.flag_record = False
         self.mp = None
         self.is_finished = False
+        self.cur_x, self.cur_y = None, None
 
         self.boundarybuilder = bd
         self.OUTSIDE_REGION = False
@@ -38,9 +39,9 @@ class Calibrator:
         print("jobs done")
 
     def data_callback(self, msg):
-        x, y = lat_lon_to_x_y(msg.longitude, msg.latitude)
+        self.cur_x, self.cur_y = lat_lon_to_x_y(msg.latitude, msg.longitude)
         if self.boundarybuilder is not None and self.boundarybuilder.map is not None:
-            grid_x, grid_y = self.boundarybuilder.grid_trans(x, y)
+            grid_x, grid_y = self.boundarybuilder.grid_trans(self.cur_x, self.cur_y)
             if self.boundarybuilder.not_valid(grid_x, grid_y) or self.boundarybuilder.map[grid_x][grid_y] == self.boundarybuilder.OUTSIDE:
                 print("outside region")
                 self.OUTSIDE_REGION = True
@@ -161,12 +162,12 @@ class Calibrator:
 
         N = 100
         ox, oy, r = plsq[0]
-        x, y = [], []
+        arr_x, arr_y = [], []
         for i in range(N + 1):
             angle = np.pi * 2 * i / N
-            x.append(r * np.cos(angle) + ox)
-            y.append(r * np.sin(angle) + oy)
-        plt.plot(y, x, color="red", linestyle='-')
+            arr_x.append(r * np.cos(angle) + ox)
+            arr_y.append(r * np.sin(angle) + oy)
+        plt.plot(arr_y, arr_x, color="red", linestyle='-')
 
         plt.title("angle: " + str(self.angle) + ", \nRadius: " + str(round(plsq[0][2], 2)))
         plt.scatter(raw_y, raw_x)
